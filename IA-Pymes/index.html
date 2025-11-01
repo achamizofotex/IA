@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Chatbot IA-Pymes — Notas de Inspección</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body data-webhook-url="REEMPLAZA_POR_TU_WEBHOOK_DE_MAKE" data-webhook-token="">
+  <main class="chat-container">
+    <header>
+      <h1>Chat — Notas de Inspección</h1>
+      <p>Envía notas de campo, fotos y ubicación al agente vía webhook (Make)</p>
+    </header>
+
+    <section id="chat" class="messages" aria-live="polite"></section>
+
+    <form id="form" class="composer" autocomplete="off">
+      <textarea id="message" placeholder="Escribe tus notas..." rows="3"></textarea>
+
+      <div class="controls">
+        <label class="file-label">
+          📎
+          <input id="file" type="file" multiple accept="image/*,application/pdf"/>
+        </label>
+
+        <button type="button" id="locBtn" title="Enviar ubicación">📍</button>
+        <button type="submit" id="sendBtn">Enviar</button>
+      </div>
+    </form>
+  </main>
+
+  <script>
+  // Cambia estos valores en el atributo data-webhook-url de <body> o aquí.
+  const bodyEl = document.body;
+  const WEBHOOK_URL = bodyEl.dataset.webhookUrl || "";
+  const WEBHOOK_TOKEN = bodyEl.dataset.webhookToken || ""; // opcional, puedes usar un header X-Webhook-Token
+
+  const chatEl = document.getElementById('chat');
+  const form = document.getElementById('form');
+  const messageInput = document.getElementById('message');
+  const fileInput = document.getElementById('file');
+  const locBtn = document.getElementById('locBtn');
+
+  let currentLocation = null;
+
+  function addMessage(text, from='usuario') {
+    const m = document.createElement('div');
+    m.className = 'message ' + from;
+    const time = new Date().toLocaleString();
+    m.innerHTML = '<div class="bubble"><div class="text"></div><div class="time>'+time+'</div></div>';
+    m.querySelector('.text').innerText = text;
+    chatEl.appendChild(m);
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
+
+  function addSystem(text) {
+    const m = document.createElement('div');
+    m.className = 'message system';
+    m.innerHTML = '<div class="bubble"><div class="text"></div></div>';
+    m.querySelector('.text').innerText = text;
+    chatEl.appendChild(m);
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
+
+  locBtn.addEventListener('click', () => {
+    addSystem('Obteniendo ubicación...');
+    if (!navigator.geolocation) {
+      addSystem('Geolocalización no soportada.');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition((pos) => {
+      currentLocation = {
+        lat: pos.coords.latitude,
+        lon: pos.coords.longitude,
+        accuracy_m: pos.coords.accuracy
+      };
+      addSystem('Ubicación capturada: ' + currentLocation.lat.toFixed(6) + ', ' + currentLocation.lon.toFixed(6));
+    }, (err) => {
+      addSystem('Error ubicación: ' + err.message);
+    }, { enableHighAccuracy: true, timeout: 10000 });
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const text = messageInput.value.trim();
+    const files = Array.from(fileInput.files || []);
+
+    if (!text && files.length === 0 && !currentLocation) {
+      addSystem('No hay contenido para enviar.');
+      return;
+    }
+
+    // Mostrar en la UI
+    if (text) addMessage(text, 'usuario');
+
+    // Construir payload: enviaremos multipart/form-data para que Make acepte archivos fácilmente.
+    const formData = new FormData();
+    const metadata = {
+      text: text || "",
+      timestamp: new Date().toISOString(),
+      location: currentLocation // null si no hay
+    };
+    formData.append('payload', JSON.stringify(metadata));
+
+    files.forEach((f, i) => {
+      // nombre 'file0', 'file1' ... Make recibe archivos desde multipart/form-data
+      formData.append('file' + i, f, f.name);
+    });
+
+    try {
+      addSystem('Enviando al webhook...');
+      const headers = {};
+      if (WEBHOOK_TOKEN) {
+        // Si configuras un token en Make (filtro), envíalo aquí
+        headers['X-Webhook-Token'] = WEBHOOK_TOKEN;
+      }
+
+      if (!WEBHOOK_URL) {
+        addSystem('ERROR: WEBHOOK_URL no configurado. Edita el atributo data-webhook-url en <body>.');
+        return;
+      }
+
+      const res = await fetch(WEBHOOK_URL, {
+        method: 'POST',
+        headers,
+        body: formData,
+        mode: 'cors'
+      });
+
+      if (!res.ok) {
+        const txt = await res.text().catch(()=>'');
+        addSystem('Error al enviar: ' + res.status + ' ' + res.statusText + ' ' + txt);
+      } else {
+        addSystem('Envío correcto. Make debería recibir los datos.');
+      }
+    } catch (err) {
+      addSystem('Error de red: ' + err.message);
+    } finally {
+      // limpiar inputs
+      messageInput.value = '';
+      fileInput.value = '';
+      currentLocation = null;
+    }
+  });
+  </script>
+</body>
+</html>
