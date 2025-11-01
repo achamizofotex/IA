@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chatbot → Make Webhook</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+
+  <div class="bg-white shadow-xl rounded-2xl p-6 w-full max-w-md">
+    <h1 class="text-2xl font-bold text-center mb-4">🤖 Chatbot → Make Webhook</h1>
+
+    <label class="block mb-2 text-sm font-medium">Webhook URL</label>
+    <input
+      id="webhookUrl"
+      type="text"
+      placeholder="https://hook.make.com/xxxx"
+      class="w-full p-2 border rounded-lg mb-3"
+    />
+
+    <label class="block mb-2 text-sm font-medium">Secret Key (opcional)</label>
+    <input
+      id="secretKey"
+      type="password"
+      placeholder="Clave opcional"
+      class="w-full p-2 border rounded-lg mb-3"
+    />
+
+    <label class="block mb-2 text-sm font-medium">Mensaje</label>
+    <textarea
+      id="message"
+      placeholder="Escribe aquí el mensaje para Make..."
+      rows="4"
+      class="w-full p-2 border rounded-lg mb-3"
+    ></textarea>
+
+    <div class="flex gap-2">
+      <button
+        id="sendButton"
+        class="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition"
+      >
+        Enviar a Make
+      </button>
+
+      <button
+        id="saveButton"
+        class="bg-gray-200 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-300 transition"
+      >
+        💾 Save Settings
+      </button>
+    </div>
+
+    <p id="status" class="mt-4 text-center text-sm text-gray-700"></p>
+    <p id="savedMsg" class="mt-2 text-green-600 text-sm text-center hidden">
+      ⚙️ Configuración guardada
+    </p>
+  </div>
+
+  <script>
+    // Recuperar configuración guardada
+    const webhookUrlInput = document.getElementById("webhookUrl");
+    const secretKeyInput = document.getElementById("secretKey");
+    const messageInput = document.getElementById("message");
+    const statusEl = document.getElementById("status");
+    const savedMsg = document.getElementById("savedMsg");
+
+    webhookUrlInput.value = localStorage.getItem("webhookUrl") || "";
+    secretKeyInput.value = localStorage.getItem("secretKey") || "";
+
+    document.getElementById("saveButton").addEventListener("click", () => {
+      localStorage.setItem("webhookUrl", webhookUrlInput.value);
+      localStorage.setItem("secretKey", secretKeyInput.value);
+      savedMsg.classList.remove("hidden");
+      setTimeout(() => savedMsg.classList.add("hidden"), 2000);
+    });
+
+    document.getElementById("sendButton").addEventListener("click", async () => {
+      const webhookUrl = webhookUrlInput.value.trim();
+      const secretKey = secretKeyInput.value.trim();
+      const message = messageInput.value.trim();
+
+      if (!webhookUrl) {
+        statusEl.textContent = "⚠️ Falta el Webhook URL";
+        return;
+      }
+      if (!message) {
+        statusEl.textContent = "⚠️ Escribe un mensaje para enviar";
+        return;
+      }
+
+      const payload = {
+        message,
+        secretKey: secretKey || undefined,
+        timestamp: new Date().toISOString(),
+      };
+
+      try {
+        const res = await fetch(webhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (res.ok) {
+          statusEl.textContent = "✅ Enviado correctamente a Make";
+          messageInput.value = "";
+        } else {
+          statusEl.textContent = "❌ Error al enviar";
+        }
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = "🚨 Error de conexión";
+      }
+    });
+  </script>
+</body>
+</html>
