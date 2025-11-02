@@ -31,10 +31,10 @@
   </main>
 
   <script>
-  // Cambia estos valores en el atributo data-webhook-url de <body> o aquí.
+  // Valores desde el atributo data-* del body
   const bodyEl = document.body;
   const WEBHOOK_URL = bodyEl.dataset.webhookUrl || "";
-  const WEBHOOK_TOKEN = bodyEl.dataset.webhookToken || ""; // opcional, puedes usar un header X-Webhook-Token
+  const WEBHOOK_TOKEN = bodyEl.dataset.webhookToken || ""; // opcional
 
   const chatEl = document.getElementById('chat');
   const form = document.getElementById('form');
@@ -48,7 +48,8 @@
     const m = document.createElement('div');
     m.className = 'message ' + from;
     const time = new Date().toLocaleString();
-    m.innerHTML = '<div class="bubble"><div class="text"></div><div class="time>'+time+'</div></div>';
+    // CORRECCIÓN: concatenación segura de la hora dentro del HTML
+    m.innerHTML = '<div class="bubble"><div class="text"></div><div class="time">' + time + '</div></div>';
     m.querySelector('.text').innerText = text;
     chatEl.appendChild(m);
     chatEl.scrollTop = chatEl.scrollHeight;
@@ -91,30 +92,24 @@
       return;
     }
 
-    // Mostrar en la UI
     if (text) addMessage(text, 'usuario');
 
-    // Construir payload: enviaremos multipart/form-data para que Make acepte archivos fácilmente.
     const formData = new FormData();
     const metadata = {
       text: text || "",
       timestamp: new Date().toISOString(),
-      location: currentLocation // null si no hay
+      location: currentLocation
     };
     formData.append('payload', JSON.stringify(metadata));
 
     files.forEach((f, i) => {
-      // nombre 'file0', 'file1' ... Make recibe archivos desde multipart/form-data
       formData.append('file' + i, f, f.name);
     });
 
     try {
       addSystem('Enviando al webhook...');
       const headers = {};
-      if (WEBHOOK_TOKEN) {
-        // Si configuras un token en Make (filtro), envíalo aquí
-        headers['X-Webhook-Token'] = WEBHOOK_TOKEN;
-      }
+      if (WEBHOOK_TOKEN) headers['X-Webhook-Token'] = WEBHOOK_TOKEN;
 
       if (!WEBHOOK_URL) {
         addSystem('ERROR: WEBHOOK_URL no configurado. Edita el atributo data-webhook-url en <body>.');
@@ -137,7 +132,6 @@
     } catch (err) {
       addSystem('Error de red: ' + err.message);
     } finally {
-      // limpiar inputs
       messageInput.value = '';
       fileInput.value = '';
       currentLocation = null;
