@@ -1,118 +1,142 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Chatbot → Make Webhook</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Chatbot IA-Pymes — Notas de Inspección</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
-<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+<body data-webhook-url="REEMPLAZA_POR_TU_WEBHOOK_DE_MAKE" data-webhook-token="">
+  <main class="chat-container">
+    <header>
+      <h1>Chat — Notas de Inspección</h1>
+      <p>Envía notas de campo, fotos y ubicación al agente vía webhook (Make)</p>
+    </header>
 
-  <div class="bg-white shadow-xl rounded-2xl p-6 w-full max-w-md">
-    <h1 class="text-2xl font-bold text-center mb-4">🤖 Chatbot → Make Webhook</h1>
+    <section id="chat" class="messages" aria-live="polite"></section>
 
-    <label class="block mb-2 text-sm font-medium">Webhook URL</label>
-    <input
-      id="webhookUrl"
-      type="text"
-      placeholder="https://hook.make.com/xxxx"
-      class="w-full p-2 border rounded-lg mb-3"
-    />
+    <form id="form" class="composer" autocomplete="off">
+      <textarea id="message" placeholder="Escribe tus notas..." rows="3"></textarea>
 
-    <label class="block mb-2 text-sm font-medium">Secret Key (opcional)</label>
-    <input
-      id="secretKey"
-      type="password"
-      placeholder="Clave opcional"
-      class="w-full p-2 border rounded-lg mb-3"
-    />
+      <div class="controls">
+        <label class="file-label">
+          📎
+          <input id="file" type="file" multiple accept="image/*,application/pdf"/>
+        </label>
 
-    <label class="block mb-2 text-sm font-medium">Mensaje</label>
-    <textarea
-      id="message"
-      placeholder="Escribe aquí el mensaje para Make..."
-      rows="4"
-      class="w-full p-2 border rounded-lg mb-3"
-    ></textarea>
-
-    <div class="flex gap-2">
-      <button
-        id="sendButton"
-        class="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition"
-      >
-        Enviar a Make
-      </button>
-
-      <button
-        id="saveButton"
-        class="bg-gray-200 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-300 transition"
-      >
-        💾 Save Settings
-      </button>
-    </div>
-
-    <p id="status" class="mt-4 text-center text-sm text-gray-700"></p>
-    <p id="savedMsg" class="mt-2 text-green-600 text-sm text-center hidden">
-      ⚙️ Configuración guardada
-    </p>
-  </div>
+        <button type="button" id="locBtn" title="Enviar ubicación">📍</button>
+        <button type="submit" id="sendBtn">Enviar</button>
+      </div>
+    </form>
+  </main>
 
   <script>
-    // Recuperar configuración guardada
-    const webhookUrlInput = document.getElementById("webhookUrl");
-    const secretKeyInput = document.getElementById("secretKey");
-    const messageInput = document.getElementById("message");
-    const statusEl = document.getElementById("status");
-    const savedMsg = document.getElementById("savedMsg");
+  // Valores desde el atributo data-* del body
+  const bodyEl = document.body;
+  const WEBHOOK_URL = bodyEl.dataset.webhookUrl || "";
+  const WEBHOOK_TOKEN = bodyEl.dataset.webhookToken || ""; // opcional
 
-    webhookUrlInput.value = localStorage.getItem("webhookUrl") || "";
-    secretKeyInput.value = localStorage.getItem("secretKey") || "";
+  const chatEl = document.getElementById('chat');
+  const form = document.getElementById('form');
+  const messageInput = document.getElementById('message');
+  const fileInput = document.getElementById('file');
+  const locBtn = document.getElementById('locBtn');
 
-    document.getElementById("saveButton").addEventListener("click", () => {
-      localStorage.setItem("webhookUrl", webhookUrlInput.value);
-      localStorage.setItem("secretKey", secretKeyInput.value);
-      savedMsg.classList.remove("hidden");
-      setTimeout(() => savedMsg.classList.add("hidden"), 2000);
-    });
+  let currentLocation = null;
 
-    document.getElementById("sendButton").addEventListener("click", async () => {
-      const webhookUrl = webhookUrlInput.value.trim();
-      const secretKey = secretKeyInput.value.trim();
-      const message = messageInput.value.trim();
+  function addMessage(text, from='usuario') {
+    const m = document.createElement('div');
+    m.className = 'message ' + from;
+    const time = new Date().toLocaleString();
+    // CORRECCIÓN: concatenación segura de la hora dentro del HTML
+    m.innerHTML = '<div class="bubble"><div class="text"></div><div class="time">' + time + '</div></div>';
+    m.querySelector('.text').innerText = text;
+    chatEl.appendChild(m);
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
 
-      if (!webhookUrl) {
-        statusEl.textContent = "⚠️ Falta el Webhook URL";
-        return;
-      }
-      if (!message) {
-        statusEl.textContent = "⚠️ Escribe un mensaje para enviar";
-        return;
-      }
+  function addSystem(text) {
+    const m = document.createElement('div');
+    m.className = 'message system';
+    m.innerHTML = '<div class="bubble"><div class="text"></div></div>';
+    m.querySelector('.text').innerText = text;
+    chatEl.appendChild(m);
+    chatEl.scrollTop = chatEl.scrollHeight;
+  }
 
-      const payload = {
-        message,
-        secretKey: secretKey || undefined,
-        timestamp: new Date().toISOString(),
+  locBtn.addEventListener('click', () => {
+    addSystem('Obteniendo ubicación...');
+    if (!navigator.geolocation) {
+      addSystem('Geolocalización no soportada.');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition((pos) => {
+      currentLocation = {
+        lat: pos.coords.latitude,
+        lon: pos.coords.longitude,
+        accuracy_m: pos.coords.accuracy
       };
+      addSystem('Ubicación capturada: ' + currentLocation.lat.toFixed(6) + ', ' + currentLocation.lon.toFixed(6));
+    }, (err) => {
+      addSystem('Error ubicación: ' + err.message);
+    }, { enableHighAccuracy: true, timeout: 10000 });
+  });
 
-      try {
-        const res = await fetch(webhookUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const text = messageInput.value.trim();
+    const files = Array.from(fileInput.files || []);
 
-        if (res.ok) {
-          statusEl.textContent = "✅ Enviado correctamente a Make";
-          messageInput.value = "";
-        } else {
-          statusEl.textContent = "❌ Error al enviar";
-        }
-      } catch (err) {
-        console.error(err);
-        statusEl.textContent = "🚨 Error de conexión";
-      }
+    if (!text && files.length === 0 && !currentLocation) {
+      addSystem('No hay contenido para enviar.');
+      return;
+    }
+
+    if (text) addMessage(text, 'usuario');
+
+    const formData = new FormData();
+    const metadata = {
+      text: text || "",
+      timestamp: new Date().toISOString(),
+      location: currentLocation
+    };
+    formData.append('payload', JSON.stringify(metadata));
+
+    files.forEach((f, i) => {
+      formData.append('file' + i, f, f.name);
     });
+
+    try {
+      addSystem('Enviando al webhook...');
+      const headers = {};
+      if (WEBHOOK_TOKEN) headers['X-Webhook-Token'] = WEBHOOK_TOKEN;
+
+      if (!WEBHOOK_URL) {
+        addSystem('ERROR: WEBHOOK_URL no configurado. Edita el atributo data-webhook-url en <body>.');
+        return;
+      }
+
+      const res = await fetch(WEBHOOK_URL, {
+        method: 'POST',
+        headers,
+        body: formData,
+        mode: 'cors'
+      });
+
+      if (!res.ok) {
+        const txt = await res.text().catch(()=>'');
+        addSystem('Error al enviar: ' + res.status + ' ' + res.statusText + ' ' + txt);
+      } else {
+        addSystem('Envío correcto. Make debería recibir los datos.');
+      }
+    } catch (err) {
+      addSystem('Error de red: ' + err.message);
+    } finally {
+      messageInput.value = '';
+      fileInput.value = '';
+      currentLocation = null;
+    }
+  });
   </script>
 </body>
 </html>
